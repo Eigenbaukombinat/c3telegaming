@@ -1,0 +1,5 @@
+deps/venv
+deps/__pycache__/
+
+config/accfile.conf
+config/regexroute.conf
