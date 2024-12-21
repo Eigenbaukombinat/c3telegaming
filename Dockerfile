@@ -1,58 +1,55 @@
-FROM debian:bookworm
+# Multi-stage Dockerfile for building and running Yate
 
-#build yate
-RUN apt update && apt install -y -f \
-  autoconf \
-  build-essential \
-  doxygen \
-  gcc \
-  git \
-  grep \
-  make \
-  original-awk \
-  telnet \
-  sed \
-  vim
+# Stage 1: Build
+FROM debian:bookworm as build
 
-RUN git clone https://github.com/yatevoip/yate /yate
-WORKDIR "/yate"
-RUN ./autogen.sh
-RUN ./configure
-RUN make -j 8 all
-RUN make install
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf \
+    build-essential \
+    gcc \
+    git \
+    make \
+    original-awk \
+    sed \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt update && apt install -y -f \
-#  espeak-ng \
-#  ffmpeg \
-#  lame \
-#  libmp3lame0 \
-  python3-pip \
-  python3-venv 
-#  tcl \
-#  tcl-tls \
-#  tcllib
+# Clone and build Yate
+WORKDIR /yate
+RUN git clone https://github.com/yatevoip/yate . \
+    && ./autogen.sh \
+    && ./configure --disable-doc \
+    && make -j$(nproc) doc=no
 
-#yate-tcl
-#COPY deps/yate-tcl /opt/yate-tcl
-#RUN mkdir /usr/local/share/tcltk && ln -s /opt/yate-tcl/ygi /usr/local/share/tcltk/ygi
+# Stage 2: Runtime
+FROM debian:bookworm-slim
 
-#pyttsx3
-#COPY deps/yate_tts.py /opt/
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    make \
+    python3-venv \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-#RUN pip3 install python-yate requests
-RUN python3 -m venv /python-venv/
-RUN /python-venv/bin/pip3 install \
-  aiohttp \
-  filelock \
-  requests \
-  python-yate \
-  pyttsx3
+# Copy only necessary binaries and libraries from the build stage
+COPY --from=build /yate /yate
 
-#yate-config
+WORKDIR /yate
+# Set up shared library cache
+RUN make install-noapi && ldconfig
+
+# Set up Python virtual environment
+RUN python3 -m venv /python-venv \
+    && /python-venv/bin/pip3 install --no-cache-dir \
+        filelock \
+        requests \
+        python-yate
+
+# Copy configuration, scripts, and sound files
 COPY config /usr/local/etc/yate
-
 COPY sounds /usr/local/share/yate/sounds/
-
 COPY scripts /usr/local/share/yate/scripts/
 
-ENTRYPOINT [ "yate", "upstream_broke_it" ]
+# Set entrypoint
+ENTRYPOINT ["yate"]
