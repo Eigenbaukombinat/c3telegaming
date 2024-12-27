@@ -16,36 +16,36 @@ logger.addHandler(ConsoleOutputHandler)
 logging.basicConfig(level=logging.INFO)
 
 async def send_udp_packet(sock, message: str):
-    """Sendet ein UDP-Paket an die angegebene IP und den Port."""
+    """Sends a UDP packet to the specified IP and port."""
     sock.sendto(message.encode(), (UDP_IP, UDP_PORT))
 
 async def main(ivr: YateIVR):
-    """Haupt-Logik zur Verarbeitung der Eingabe und zum Senden von UDP-Paketen."""
+    """Main logic to process input and send UDP packets."""
     
-    logger.debug("geht los")
-    # Öffne den Socket einmalig und behalte ihn während des Anrufs geöffnet
+    logger.debug("start")
+    # Open the socket once and keep it open during the call
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
     try:
         await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "intro.slin"), complete=True)
         # await asyncio.sleep(0.5)
 
-        # Solange der Anrufer in der Leitung ist, lese DTMF und sende die Daten über UDP
+        # As long as the caller is on the line, read DTMF and send the data via UDP
         while True:
-            # Warte auf DTMF-Eingabe und sende diese als UDP-Paket
+            # Wait for DTMF input and send it as a UDP packet
             button = await ivr.read_dtmf_symbols(1, timeout_s=5)
             
             if button:
                 await send_udp_packet(sock, button)
                 logger.info(f"Sending DTMF {button} to {UDP_IP}:{UDP_PORT}")
             else:
-                # Wenn keine Eingabe, kann hier z.B. eine Timeout-Behandlung erfolgen
+                # If no input, a timeout handling can take place here, for example
                 logger.info("No input received, waiting for next input...")
             
     finally:
-        sock.close()  # Schließe den Socket am Ende des Anrufs
+        sock.close() # Close the socket at the end of the call
 
-# Initialisiere und starte die Yate IVR Anwendung
+# Initialize and start the Yate IVR application
 logging.info("Starting Yate IVR...")
-app = YateIVR(host="127.0.0.1", port=9999)
+app = YateIVR()
 app.run(main)
