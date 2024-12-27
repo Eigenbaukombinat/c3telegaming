@@ -1,6 +1,7 @@
 # c3telegaming setup
 
-This is an example of a minimal [yate](https://docs.yate.ro/wiki/Main_Page) setup, which registers via an upstream SIP trunk and answers all calls with script. 
+This is an example of a minimal [yate](https://docs.yate.ro/wiki/Main_Page) setup, which registers via an upstream SIP trunk and answers all calls with script. Then sends the DTMF Codes via UDP Packages to the Host System.
+On the Host System [phony](https://github.com/Eigenbaukombinat/phony) insert the Key Presses as Keyboard inputs.
 
 ## How to
 
@@ -15,7 +16,12 @@ cd c3telegaming
 
 Rename [accfile.conf.sample](config/accfile.conf.sample) accfile.conf to with your SIP Account credentials. If you don't have a SIP Account, you may use an [EPVPN Account](https://eventphone.de/doku/epvpn) for __testing__ purposes.
 
-### scripts
+### run phony on the Host-System
+
+Get the Code from https://github.com/Eigenbaukombinat/phony
+Please finde the Manual in the [Readme](https://github.com/Eigenbaukombinat/phony/blob/main/README.md)
+
+### scripts in the Docker Container
 
 - [phony.py](scripts/phony.py) - send phone input as UDP Packages
 More examples can be found in the [yate-tcl](https://github.com/bef/yate-tcl) or  [eventphone](https://github.com/eventphone/hotline/tree/master/hotline)repository.
