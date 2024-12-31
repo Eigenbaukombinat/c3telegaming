@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/python-venv/bin/python3
 import asyncio
 import os
 import logging
@@ -8,13 +8,10 @@ from yate.ivr import YateIVR
 
 from filelock import FileLock, Timeout
 import time
-import atexit
+# import atexit
 
 # Pfad zur Lock-Datei und der eigentlichen Datei
 lock_file_path = "phonyclient.lock"
-
-# Lock-Objekt erstellen
-lock = FileLock(lock_file_path, timeout=-1)  # Timeout nach 5 Sekunden
 
 SOUNDS_PATH = "/usr/local/share/yate/sounds"
 UDP_IP = "172.17.0.1"
@@ -26,11 +23,9 @@ logger.addHandler(ConsoleOutputHandler)
 logging.basicConfig(level=logging.INFO)
 
 def cleanup_lock():
-    if lock.is_locked:
-        print("Entferne Lock-Datei beim Beenden des Skripts...")
-        lock.release()
-        if os.path.exists(lock_file_path):
-            os.remove(lock_file_path)
+    logger.info("Entferne Lock-Datei beim Beenden des Skripts...")
+    if os.path.exists(lock_file_path):
+        os.remove(lock_file_path)
 
 async def send_udp_packet(sock, message: str):
     """Sendet ein UDP-Paket an die angegebene IP und den Port."""
@@ -40,16 +35,33 @@ async def main(ivr: YateIVR):
     """Haupt-Logik zur Verarbeitung der Eingabe und zum Senden von UDP-Paketen."""
     
     logger.debug("geht los")
+    logger.info(f"info {ivr.call_params}")
+    logger.info(f"incoming from callerid: {ivr.call_params['caller'][-4:]}")
+    try:
+        if ivr.call_params['callername'][:2] == "01":
+            callername = "External Pressure"
+        else:
+            callername = ivr.call_params['callername']
+        logger.info(f"with callername: {callername}")
+    except KeyError:
+        logger.info("Unknown caller name")
+        callername = "Anon Nymus"
     # Öffne den Socket einmalig und behalte ihn während des Anrufs geöffnet
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
     try:
         logger.info("Versuche, die Datei zu sperren...")
-        with lock:
+        time.sleep(.5)
+        if os.path.exists(lock_file_path):
+            logger.info("Added User to queue")
+            await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/Queue.slin"), complete=True)
+            await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "pocmenu/warteschleife.slin"), repeat=True)
+
+        with FileLock(lock_file_path, timeout=-1):
             logger.info("Dateilock erstellt")
 
             try:
-                await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/intro.slin"), complete=True)
+                await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/Startgame.slin"), complete=False)
                 #await asyncio.sleep(0.5)
         
                 #game = await ivr.read_dtmf_symbols(4)
@@ -60,7 +72,7 @@ async def main(ivr: YateIVR):
                 # Solange der Anrufer in der Leitung ist, lese DTMF und sende die Daten über UDP
                 while True:
                     # Warte auf DTMF-Eingabe und sende diese als UDP-Paket
-                    button = await ivr.read_dtmf_symbols(1, timeout_s=5)
+                    button = await ivr.read_dtmf_symbols(1)
             
                     if button:
                         await send_udp_packet(sock, button)
@@ -70,6 +82,8 @@ async def main(ivr: YateIVR):
                         await ivr.close
                         logger.info("No input received, waiting for next input...")    
             finally:
+                logger.info("closing socket")
+                await send_udp_packet(sock, '*')
                 sock.close() # Schließe den Socket am Ende des Anrufs
         logger.info("Datei entsperrt.")
     except Timeout:
@@ -82,10 +96,12 @@ async def main(ivr: YateIVR):
         await ivr.tone("busy")
         await asyncio.sleep(0.2)
     finally:
+        logger.info(f"closing callerid: {ivr.call_params['caller'][-4:]}")
         cleanup_lock() # Sicherstellen, dass der Lock entfernt wird
 
 # Initialisiere und starte die Yate IVR Anwendung
 logging.info("Starting Yate IVR...")
-atexit.register(cleanup_lock)
+# atexit.register(cleanup_lock)
 app = YateIVR()
+# app.register_hangup_handler(cleanup_lock)
 app.run(main)

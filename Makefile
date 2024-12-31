@@ -14,8 +14,9 @@ docker_build:
 
 .PHONY: docker_run
 docker_start: docker_build
-	sudo docker run -ti c3telegaming
+
+	sudo docker run -ti --rm c3telegaming
 
 .PHONY: clean
 clean:
-	sudo docker rmi -f $(sudo docker images -aq)
+	sudo docker container rm -f $(sudo docker container ls -aq)

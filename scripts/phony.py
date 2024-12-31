@@ -8,11 +8,14 @@ from yate.ivr import YateIVR
 
 from filelock import FileLock, Timeout
 import time
-# import atexit
+import atexit
+
 
 # Pfad zur Lock-Datei und der eigentlichen Datei
 lock_file_path = "phonyclient.lock"
 
+# Lock-Objekt erstellen
+lock = FileLock(lock_file_path, timeout=-1)  # Timeout nach 5 Sekunden
 SOUNDS_PATH = "/usr/local/share/yate/sounds"
 UDP_IP = "172.17.0.1"
 UDP_PORT = 1234
@@ -23,9 +26,11 @@ logger.addHandler(ConsoleOutputHandler)
 logging.basicConfig(level=logging.INFO)
 
 def cleanup_lock():
-    logger.info("Entferne Lock-Datei beim Beenden des Skripts...")
-    if os.path.exists(lock_file_path):
-        os.remove(lock_file_path)
+    if lock.is_locked:
+        logger.info("Entferne Lock-Datei beim Beenden des Skripts...")
+        lock.release()
+        if os.path.exists(lock_file_path):
+            os.remove(lock_file_path)
 
 async def send_udp_packet(sock, message: str):
     """Sendet ein UDP-Paket an die angegebene IP und den Port."""
@@ -47,11 +52,11 @@ async def main(ivr: YateIVR):
             await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/Queue.slin"), complete=True)
             await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "pocmenu/warteschleife.slin"), repeat=True)
 
-        with FileLock(lock_file_path, timeout=-1):
+        with lock:
             logger.info("Dateilock erstellt")
 
             try:
-                await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/Startgame.slin"), complete=False)
+                await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/Startgame.slin"), complete=True)
                 #await asyncio.sleep(0.5)
         
                 #game = await ivr.read_dtmf_symbols(4)
@@ -73,9 +78,9 @@ async def main(ivr: YateIVR):
                         logger.info("No input received, waiting for next input...")    
             finally:
                 logger.info("closing socket")
-                await send_udp_packet(sock, '*')
                 sock.close() # Schließe den Socket am Ende des Anrufs
         logger.info("Datei entsperrt.")
+        cleanup_lock()
     except Timeout:
         #logger.debug("Script läuft schon (Timeout). ")
         await ivr.play_soundfile(os.path.join(SOUNDS_PATH, "telegaming/intro.slin"), repeat=True, complete=True)
@@ -83,15 +88,16 @@ async def main(ivr: YateIVR):
         logger.info("Timeout")
     except Exception as e:
         print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+        cleanup_lock()
         await ivr.tone("busy")
         await asyncio.sleep(0.2)
+        cleanup_lock()
     finally:
-        logger.info(f"closing callerid: {ivr.call_params['caller']}")
         cleanup_lock() # Sicherstellen, dass der Lock entfernt wird
 
 # Initialisiere und starte die Yate IVR Anwendung
 logging.info("Starting Yate IVR...")
-# atexit.register(cleanup_lock)
+atexit.register(cleanup_lock)
 app = YateIVR()
-# app.register_hangup_handler(cleanup_lock)
+app.register_hangup_handler(cleanup_lock)
 app.run(main)
