@@ -1,3 +1,0 @@
-[submodule "deps/yate-tcl"]
-	path = deps/yate-tcl
-	url = https://github.com/bef/yate-tcl

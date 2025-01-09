@@ -1,25 +1,55 @@
-FROM debian:buster
+# Multi-stage Dockerfile for building and running Yate
 
-#yate
-COPY deps/yate_5.5-1_amd64.deb /tmp/
-RUN apt update && apt install -y -f \
-  /tmp/yate_5.5-1_amd64.deb \
-  python3-pip \
-  tcl \
-  tcllib \
-  tcl-tls
+# Stage 1: Build
+FROM debian:bookworm as build
 
-#yate-tcl
-COPY deps/yate-tcl /opt/yate-tcl
-RUN mkdir /usr/local/share/tcltk && ln -s /opt/yate-tcl/ygi /usr/local/share/tcltk/ygi
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf \
+    build-essential \
+    gcc \
+    git \
+    make \
+    original-awk \
+    sed \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install python-yate requests
+# Clone and build Yate
+WORKDIR /yate
+RUN git clone https://github.com/yatevoip/yate . \
+    && ./autogen.sh \
+    && ./configure --disable-doc \
+    && make -j$(nproc) doc=no
 
-#yate-config
-COPY config /etc/yate
+# Stage 2: Runtime
+FROM debian:bookworm-slim
 
-COPY sounds /opt/sounds
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    make \
+    python3-venv \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY hotline /usr/share/yate/scripts/
+# Copy only necessary binaries and libraries from the build stage
+COPY --from=build /yate /yate
 
-ENTRYPOINT [ "/usr/bin/yate", "upstream_broke_it" ]
+WORKDIR /yate
+# Set up shared library cache
+RUN make install-noapi && ldconfig
+
+# Set up Python virtual environment
+RUN python3 -m venv /python-venv \
+    && /python-venv/bin/pip3 install --no-cache-dir \
+        filelock \
+        requests \
+        python-yate
+
+# Copy configuration, scripts, and sound files
+COPY config /usr/local/etc/yate
+COPY sounds /usr/local/share/yate/sounds/
+COPY scripts /usr/local/share/yate/scripts/
+
+# Set entrypoint
+ENTRYPOINT ["yate"]
